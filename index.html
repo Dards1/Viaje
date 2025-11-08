@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Viaje Floripa Pinboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: sans-serif; margin: 0; padding: 0; background: #f4f4f4; }
+header { background: #0077b6; color: white; padding: 1rem; text-align: center; }
+nav { display: flex; justify-content: center; background: #e0e0e0; padding: 0.5rem; flex-wrap: wrap; }
+nav button { margin: 0.25rem; padding: 0.5rem 1rem; border: none; cursor: pointer; background: #ccc; border-radius: 8px; font-weight: bold; }
+nav button.active { background: #0077b6; color: white; }
+main { padding: 1rem; }
+#controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+#controls input, #controls button, #controls label { padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; background: white; font-size: 0.9rem; }
+#controls button { background: #0077b6; color: white; border: none; }
+#controls button:hover { background: #005f8a; }
+#controls input[type="text"] { flex: 1; min-width: 200px; }
+#controls label { cursor: pointer; }
+#controls label input { display: none; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; }
+.card img { width: 100%; height: 160px; object-fit: cover; }
+.card .content { padding: 0.5rem 0.75rem; flex: 1; display: flex; flex-direction: column; }
+.card .content h3 { margin: 0 0 0.25rem 0; font-size: 1.1rem; }
+.card .content p { margin: 0.25rem 0; font-size: 0.9rem; color: #333; }
+.card .content .meta { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0.25rem; margin-top: auto; }
+.card .content .meta button { background: #eee; color: #333; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+.card .content .meta button:hover { background: #ddd; }
+.card .note { background: #f7fafc; border-left: 4px solid #0077b6; padding: 0.5rem; margin-top: 0.5rem; font-size: 0.85rem; color: #555; }
+.card .tag { font-size: 0.8rem; color: #0077b6; margin-top: 0.25rem; }
+#empty { text-align: center; color: #666; margin-top: 2rem; }
+form { margin-top: 1.5rem; }
+.form-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+.form-row label { display: flex; flex-direction: column; flex: 1; min-width: 160px; font-size: 0.9rem; }
+form button { background: #0077b6; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+form button:hover { background: #005f8a; }
+</style>
+</head>
+<body>
+<header>
+<h1>Viaje Floripa Pinboard</h1>
+</header>
+
+<nav id="tabs"></nav>
+
+<main>
+<div id="controls">
+<input id="search" type="text" placeholder="Buscar...">
+<button id="sortTitle">Ordenar título</button>
+<button id="sortPrice">Ordenar precio</button>
+<button id="exportBtn">Exportar JSON</button>
+<label>
+  Importar JSON
+  <input type="file" id="importFile" accept=".json">
+</label>
+<button id="demoBtn">Cargar demo</button>
+<button id="clearBtn">Borrar todo</button>
+</div>
+
+<div id="grid" class="grid"></div>
+<div id="empty">No hay elementos aún.</div>
+
+<section id="addFormSection">
+<h2>Añadir elemento a <span id="addCatLabel"></span></h2>
+<form id="addForm">
+<div class="form-row">
+<label>Título
+<input id="title" type="text" required>
+</label>
+<label>Precio
+<input id="price" type="text">
+</label>
+<label>Link
+<input id="link" type="url">
+</label>
+</div>
+<div class="form-row">
+<label>Imagen (URL)
+<input id="image" type="url">
+</label>
+<label>Nota
+<input id="note" type="text">
+</label>
+<label>Etiqueta
+<input id="tag" type="text">
+</label>
+</div>
+<button type="button" id="addBtn">Añadir</button>
+</form>
+</section>
+</main>
+
+<!-- Supabase integration -->
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// 🧠 REEMPLAZA LOS SIGUIENTES VALORES CON TU PROYECTO SUPABASE
+const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co'; // <-- coloca tu URL de proyecto aquí
+const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY'; // <-- coloca tu clave anon aquí
+
+const BOARD_ID = 'viaje-floripa';
+
+// Crear cliente Supabase
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Definir categorías
+const categories = [
+  { id: 'cars', name: 'Cars' },
+  { id: 'hotels', name: 'Hotels' },
+  { id: 'transport', name: 'Transport to Floripa' },
+  { id: 'plans', name: 'Plans & Ideas' },
+];
+
+// Obtener referencias a elementos del DOM
+const tabsEl = document.getElementById('tabs');
+const gridEl = document.getElementById('grid');
+const emptyEl = document.getElementById('empty');
+const titleEl = document.getElementById('title');
+const priceEl = document.getElementById('price');
+const linkEl = document.getElementById('link');
+const imageEl = document.getElementById('image');
+const noteEl = document.getElementById('note');
+const tagEl = document.getElementById('tag');
+const addBtn = document.getElementById('addBtn');
+const addCatLabel = document.getElementById('addCatLabel');
+const searchEl = document.getElementById('search');
+const sortPriceBtn = document.getElementById('sortPrice');
+const sortTitleBtn = document.getElementById('sortTitle');
+const exportBtn = document.getElementById('exportBtn');
+const importFile = document.getElementById('importFile');
+const demoBtn = document.getElementById('demoBtn');
+const clearBtn = document.getElementById('clearBtn');
+
+// Estado local
+let state = { items: { cars: [], hotels: [], transport: [], plans: [] } };
+let currentCat = 'cars';
+let searchQuery = '';
+let sortMode = null;
+
+// Renderizar las pestañas de categorías
+function renderTabs() {
+  tabsEl.innerHTML = '';
+  categories.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.textContent = cat.name;
+    btn.className = (currentCat === cat.id ? 'active' : '');
+    btn.onclick = () => {
+      currentCat = cat.id;
+      addCatLabel.textContent = cat.name;
+      render();
+    };
+    tabsEl.appendChild(btn);
+  });
+  addCatLabel.textContent = categories.find(c => c.id === currentCat)?.name || '';
+}
+renderTabs();
+
+// Cargar todos los elementos desde la base de datos
+async function loadAll() {
+  const { data, error } = await supabase
+    .from('items')
+    .select('*')
+    .eq('board_id', BOARD_ID)
+    .order('category', { ascending: true })
+    .order('position', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  state.items = { cars: [], hotels: [], transport: [], plans: [] };
+  for (const item of data) {
+    const key = (item.category || '').toLowerCase();
+    if (!state.items[key]) state.items[key] = [];
+    state.items[key].push(item);
+  }
+  render();
+}
+loadAll();
+
+// Suscribirse a actualizaciones en tiempo real
+function subscribeRealtime() {
+  supabase
+    .channel('realtime:items')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `board_id=eq.${BOARD_ID}` }, payload => {
+      applyChange(payload);
+      render();
+    })
+    .subscribe();
+}
+subscribeRealtime();
+
+// Aplicar un cambio recibido en tiempo real
+function applyChange({ new: nv, old: ov }) {
+  if (ov) {
+    const key = (ov.category || '').toLowerCase();
+    state.items[key] = (state.items[key] || []).filter(i => i.id !== ov.id);
+  }
+  if (nv) {
+    const key = (nv.category || '').toLowerCase();
+    const arr = (state.items[key] ||= []);
+    const idx = arr.findIndex(i => i.id === nv.id);
+    if (idx >= 0) arr[idx] = nv; else arr.push(nv);
+    arr.sort((a, b) => (a.position || 0) - (b.position || 0) || new Date(a.created_at) - new Date(b.created_at));
+  }
+}
+
+// Evento de añadir un nuevo elemento
+addBtn.onclick = async () => {
+  const newItem = {
+    id: crypto.randomUUID(),
+    board_id: BOARD_ID,
+    category: currentCat,
+    title: titleEl.value.trim(),
+    price: priceEl.value.trim(),
+    link: linkEl.value.trim(),
+    image: imageEl.value.trim(),
+    note: noteEl.value.trim(),
+    tag: tagEl.value.trim(),
+    likes: 0,
+    position: Date.now()
+  };
+  if (!newItem.title) { alert('Ingrese un título'); return; }
+  await supabase.from('items').insert(newItem);
+  titleEl.value = priceEl.value = linkEl.value = imageEl.value = noteEl.value = tagEl.value = '';
+};
+
+// Buscar
+searchEl.oninput = () => { searchQuery = searchEl.value.toLowerCase(); render(); };
+// Ordenar
+sortPriceBtn.onclick = () => { sortMode = 'price'; render(); };
+sortTitleBtn.onclick = () => { sortMode = 'title'; render(); };
+
+// Exportar a JSON
+exportBtn.onclick = async () => {
+  const { data } = await supabase.from('items').select('*').eq('board_id', BOARD_ID);
+  const obj = { categories, items: {} };
+  for (const item of data) {
+    const key = (item.category || '').toLowerCase();
+    if (!obj.items[key]) obj.items[key] = [];
+    obj.items[key].push(item);
+  }
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${BOARD_ID}-export.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+// Importar desde JSON
+importFile.onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const rows = [];
+    for (const [cat, arr] of Object.entries(data.items || {})) {
+      arr.forEach(item => {
+        rows.push({
+          id: crypto.randomUUID(),
+          board_id: BOARD_ID,
+          category: cat,
+          title: item.title || '',
+          price: item.price || '',
+          link: item.link || '',
+          image: item.image || '',
+          note: item.note || '',
+          tag: item.tag || '',
+          likes: item.likes || 0,
+          position: Date.now()
+        });
+      });
+    }
+    if (rows.length) await supabase.from('items').insert(rows);
+  } catch (err) { alert('Error al importar: ' + err.message); }
+  e.target.value = '';
+};
+
+// Cargar datos demo
+demoBtn.onclick = async () => {
+  if (!confirm('Cargar datos demo al tablero compartido?')) return;
+  const demo = [
+    { category: 'cars', title: 'Fiat Argo (Localiza)', price: 'R$ 210/día', link: 'https://www.localiza.com/' },
+    { category: 'cars', title: 'Chevrolet Onix (Movida)', price: 'R$ 230/día', link: 'https://www.movida.com.br/' },
+    { category: 'hotels', title: 'Jurerê Hotel', price: 'R$ 680/noche', link: '#' },
+    { category: 'transport', title: 'Vuelos MVD→FLN (AZUL)', price: 'US$ 350 ida', link: '#' },
+    { category: 'plans', title: 'Praia Mole', price: 'gratis', link: '#' },
+  ];
+  const rows = demo.map(item => ({
+    id: crypto.randomUUID(),
+    board_id: BOARD_ID,
+    category: item.category,
+    title: item.title,
+    price: item.price,
+    link: item.link,
+    image: item.image || '',
+    note: '',
+    tag: '',
+    likes: 0,
+    position: Date.now()
+  }));
+  await supabase.from('items').insert(rows);
+};
+
+// Borrar todos los elementos
+clearBtn.onclick = async () => {
+  if (!confirm('Borrar TODOS los elementos del tablero compartido?')) return;
+  await supabase.from('items').delete().eq('board_id', BOARD_ID);
+};
+
+// Renderizar la rejilla
+function render() {
+  const items = state.items[currentCat] || [];
+  let filtered = items.filter(item => {
+    return !searchQuery || (item.title || '').toLowerCase().includes(searchQuery) || (item.note || '').toLowerCase().includes(searchQuery);
+  });
+  if (sortMode === 'title') {
+    filtered = filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  } else if (sortMode === 'price') {
+    filtered = filtered.sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+  }
+  gridEl.innerHTML = '';
+  if (filtered.length === 0) {
+    emptyEl.style.display = 'block';
+  } else {
+    emptyEl.style.display = 'none';
+    filtered.forEach(item => {
+      gridEl.appendChild(createCard(item));
+    });
+  }
+}
+
+// Crear una tarjeta para un elemento específico
+function createCard(item) {
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  const img = document.createElement('img');
+  img.src = item.image || placeholderImage(item.title);
+  img.alt = item.title;
+  img.onerror = () => { img.src = placeholderImage(item.title); };
+  card.appendChild(img);
+
+  const content = document.createElement('div');
+  content.className = 'content';
+
+  const h3 = document.createElement('h3');
+  if (item.link) {
+    const a = document.createElement('a');
+    a.href = item.link;
+    a.textContent = item.title;
+    a.target = '_blank';
+    h3.appendChild(a);
+  } else {
+    h3.textContent = item.title;
+  }
+  content.appendChild(h3);
+
+  if (item.price) {
+    const p = document.createElement('p');
+    p.textContent = item.price;
+    content.appendChild(p);
+  }
+  if (item.tag) {
+    const span = document.createElement('div');
+    span.className = 'tag';
+    span.textContent = '#' + item.tag;
+    content.appendChild(span);
+  }
+  if (item.note) {
+    const note = document.createElement('div');
+    note.className = 'note';
+    note.textContent = item.note;
+    content.appendChild(note);
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+
+  const like = document.createElement('button');
+  like.textContent = '❤️ ' + (item.likes || 0);
+  like.onclick = async () => {
+    await supabase.from('items').update({ likes: (item.likes || 0) + 1 }).eq('id', item.id);
+  };
+  meta.appendChild(like);
+
+  const editBtn = document.createElement('button');
+  editBtn.textContent = 'Editar';
+  editBtn.onclick = async () => {
+    const title = prompt('Título:', item.title || '');
+    if (title === null) return;
+    const price = prompt('Precio:', item.price || '');
+    if (price === null) return;
+    const link = prompt('Link:', item.link || '');
+    if (link === null) return;
+    const image = prompt('Imagen URL:', item.image || '');
+    if (image === null) return;
+    const note = prompt('Nota:', item.note || '');
+    if (note === null) return;
+    const tag = prompt('Etiqueta:', item.tag || '');
+    if (tag === null) return;
+    await supabase.from('items').update({ title, price, link, image, note, tag }).eq('id', item.id);
+  };
+  meta.appendChild(editBtn);
+
+  const dupBtn = document.createElement('button');
+  dupBtn.textContent = 'Duplicar';
+  dupBtn.onclick = async () => {
+    const clone = { ...item, id: crypto.randomUUID(), created_at: null, likes: 0, position: Date.now() };
+    await supabase.from('items').insert(clone);
+  };
+  meta.appendChild(dupBtn);
+
+  const delBtn = document.createElement('button');
+  delBtn.textContent = 'Eliminar';
+  delBtn.onclick = async () => {
+    if (confirm('Eliminar este elemento?')) await supabase.from('items').delete().eq('id', item.id);
+  };
+  meta.appendChild(delBtn);
+
+  content.appendChild(meta);
+  card.appendChild(content);
+  return card;
+}
+
+// Analizar precio para ordenar
+function parsePrice(str) {
+  if (!str) return Number.POSITIVE_INFINITY;
+  const m = (str.match(/[\d.,]+/) || [''])[0].replace(/\./g, '').replace(',', '.');
+  const num = parseFloat(m);
+  return isNaN(num) ? Number.POSITIVE_INFINITY : num;
+}
+
+// Obtener imagen aleatoria si no se define una
+function placeholderImage(seed) {
+  const s = encodeURIComponent((seed || 'Floripa').slice(0, 50));
+  return `https://source.unsplash.com/600x400/?${s}`;
+}
+</script>
+
+</body>
+</html>
